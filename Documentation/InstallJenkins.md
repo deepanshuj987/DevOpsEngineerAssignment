@@ -1,9 +1,9 @@
 # Jenkins Installation
 
-Run below command to install jenkins on virtual machine using ansible playbook
+Run the below command to install Jenkins on a virtual machine using ansible-playbook with the following file name jenkins-master-setup.yaml on this path
 
  ```
-  - hosts: jenkins-master
+- hosts: jenkins-master
   become: true 
   tasks: 
   - name: add jenkins key 
@@ -36,4 +36,10 @@ Run below command to install jenkins on virtual machine using ansible playbook
       name: jenkins 
       enabled: yes 
  ```
+
+Run the below command to install Jenkins on a virtual machine
+
+  ```
+  ansible-playbook -i /opt/hosts jenkins-master-setup.yaml
+  ```
 
