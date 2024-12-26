@@ -68,7 +68,7 @@ environment {
                 )
             }
         }
-      stage('Dependency Check') {
+      stage("Dependency Check") {
          steps { 
              
              // Run Dependency-Check scan
@@ -117,7 +117,7 @@ environment {
             }
         }   
     }
-    stage('DemoTest') {  
+    stage("DemoTest") {  
           steps {  
               sh 'echo "Fail!"; exit 1'  
           }  
