@@ -1,0 +1,146 @@
+def registry = 'https://deepanshuj987.jfrog.io'
+pipeline {
+    agent {
+        node {
+            label 'maven'
+        }
+    }
+environment {
+    PATH = "/opt/apache-maven-3.9.2/bin:$PATH"
+}
+    stages {
+        stage("build"){
+            steps {
+                 echo "----------- build started ----------"
+                sh 'mvn clean deploy -Dmaven.test.skip=true'
+                 echo "----------- build complted ----------"
+            }
+        }
+        stage("test"){
+            steps{
+                echo "----------- unit test started ----------"
+                sh 'mvn surefire-report:report'
+                 echo "----------- unit test Complted ----------"
+            }
+        }
+
+      stage('SonarQube analysis') {
+         environment {
+           scannerHome = tool 'demo-scanner'
+         }
+         steps{
+             withSonarQubeEnv('demo-server') { // If you have configured more than one global server connection, you can specify its name
+               sh "${scannerHome}/bin/sonar-scanner"
+         }
+       }
+      }
+      stage("Quality Gate"){
+         steps {
+           script {
+             timeout(time: 1, unit: 'HOURS') { // Just in case something goes wrong, pipeline will be killed after a timeout
+               def qg = waitForQualityGate() // Reuse taskId previously collected by withSonarQubeEnv
+                 if (qg.status != 'OK') {
+                   error "Pipeline aborted due to quality gate failure: ${qg.status}"
+             }
+          }
+      }
+      stage("Test with JaCoCo") {
+            steps {
+                // Run tests with JaCoCo instrumentation
+                sh 'mvn test -Djacoco-agent=yes'
+            }
+        }
+
+      stage("Generate Coverage Report") {
+            steps {
+                // Generate the JaCoCo HTML report
+                sh 'mvn jacoco:report'
+            }
+        }
+
+      stage("Publish Coverage Report") {
+            steps {
+                // Publish the coverage report to Jenkins
+                publishCoverage(
+                    allowMissing: false,
+                    jacocoReportDirectory: 'target/site/jacoco',
+                    reportNamePattern: 'index.html'
+                )
+            }
+        }
+      stage('Dependency Check') {
+         steps { 
+             
+             // Run Dependency-Check scan
+             bat 'dependency-check --project "Demo Project" --scan .'
+             
+             // Parse and analyze results
+             script {
+                 def results = readFile('dependency-check-report.xml').readLines()
+                 def criticalVulns = results.findAll { line -> line.contains('CRITICAL') }
+                 
+                 if (criticalVulns.size() > 0) {
+                     error "Critical vulnerabilities found! Check the report for details."
+                 }
+             }
+         }
+         post {
+             always {
+                 // Publish the report for review
+                 archiveArtifacts 'dependency-check-report.xml'
+             }
+         }
+     }
+      
+      stage("Jar Publish") {
+        steps {
+            script {
+                    echo '<--------------- Jar Publish Started --------------->'
+                     def server = Artifactory.newServer url:registry+"/artifactory" ,  credentialsId:"artfiact-cred"
+                     def properties = "buildid=${env.BUILD_ID},commitid=${GIT_COMMIT}";
+                     def uploadSpec = """{
+                          "files": [
+                            {
+                              "pattern": "jarstaging/(*)",
+                              "target": "libs-release-local/{1}",
+                              "flat": "false",
+                              "props" : "${properties}",
+                              "exclusions": [ "*.sha1", "*.md5"]
+                            }
+                         ]
+                     }"""
+                     def buildInfo = server.upload(uploadSpec)
+                     buildInfo.env.collect()
+                     server.publishBuildInfo(buildInfo)
+                     echo '<--------------- Jar Publish Ended --------------->'  
+            
+            }
+        }   
+    }
+    stage('DemoTest') {  
+          steps {  
+              sh 'echo "Fail!"; exit 1'  
+          }  
+      }  
+  }  
+  post {  
+      always {  
+          echo 'This will always run'  
+      }  
+      success {  
+          echo 'This will run only if successful'  
+      }  
+      failure {  
+          mail bcc: '', body: "<b>Example</b><br>Project: ${env.JOB_NAME} <br>Build Number: ${env.BUILD_NUMBER} <br> URL de build: ${env.BUILD_URL}", cc: '', charset: 'UTF-8', from: '', mimeType: 'text/html', replyTo: '', subject: "ERROR CI: Project name -> ${env.JOB_NAME}", to: "DemoMail@gmail.com";  
+      }  
+      unstable {  
+          echo 'This will run only if the run was marked as unstable'  
+      }  
+      changed {  
+          echo 'This will run only if the state of the Pipeline has changed'  
+          echo 'For example, if the Pipeline was previously failing but is now successful'  
+      }  
+  }  
+    
+}
+}
