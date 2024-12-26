@@ -1,4 +1,4 @@
-#JaCoCo Integration
+# JaCoCo Integration
 
 To enable code coverage using JaCoCo and publish report using below script in Jenkins file
 
